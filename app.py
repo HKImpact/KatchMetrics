@@ -80,19 +80,17 @@ with st.sidebar:
             st.error(f"Save failed: {e}")
 
 # --- 5. MAIN APP TABS ---
-tab1, tab2 = st.tabs(["📝 Log Entry", "📈 Progress & History"])
+tab1, tab2, tab3 = st.tabs(["📝 Log Entry", "📈 Progress & History", "🔮 Future Projections"])
 
 with tab1:
     st.title(f"📊 {user}'s KatchMetrics")
 
-    # Fetch Defaults from Logs
     try:
         history_df = conn.read(worksheet="Logs", ttl=0)
         last_user_entry = history_df[history_df['User'] == user].iloc[-1]
         default_weight = float(last_user_entry['Weight'])
         default_lbm = float(last_user_entry['LBM'])
     except Exception:
-        # Fallback values if no history exists
         default_weight = 180.0
         default_lbm = 140.0
 
@@ -102,7 +100,6 @@ with tab1:
     with col2:
         lbm = st.number_input("Lean Body Mass (lbs)", value=default_lbm, step=0.1, format="%.2f")
 
-    # Calculations
     if weight > 0 and lbm > 0:
         bf_pct = (weight - lbm) / weight
         bmr = 370 + (lbm * 9.8)
@@ -129,7 +126,6 @@ with tab1:
 
         st.info(f"🥩 **P:** {p_g:.0f}g | 🥑 **F:** {f_g:.0f}g | 🍞 **C:** {c_g:.0f}g")
 
-        # LOG BUTTON
         if st.button(f"🚀 LOG DATA FOR {user.upper()}", use_container_width=True, type="primary"):
             new_entry = pd.DataFrame([{
                 "Date": datetime.now().strftime("%Y-%m-%d"),
@@ -139,13 +135,11 @@ with tab1:
                 "Goal_Weight": goal_weight,
                 "Activity_Level": activity_level
             }])
-            
             try:
                 existing_data = conn.read(worksheet="Logs", ttl=0)
                 updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
             except Exception:
                 updated_df = new_entry
-                
             conn.update(worksheet="Logs", data=updated_df)
             st.balloons()
             st.success("Entry saved!")
@@ -155,7 +149,6 @@ with tab2:
     try:
         history = conn.read(worksheet="Logs", ttl=0)
         user_history = history[history['User'] == user].copy()
-        
         if not user_history.empty:
             user_history['Weight'] = pd.to_numeric(user_history['Weight'])
             user_history['LBM'] = pd.to_numeric(user_history['LBM'])
@@ -166,14 +159,12 @@ with tab2:
                 start_w = user_history['Weight'].iloc[0]
                 curr_w = user_history['Weight'].iloc[-1]
                 total_dist = start_w - goal_weight
-                
                 if total_dist > 0:
                     dist_covered = start_w - curr_w
                     progress_pct = min(max(dist_covered / total_dist, 0.0), 1.0)
                     st.subheader(f"🎯 Goal Progress: {progress_pct:.1%}")
                     st.progress(progress_pct)
 
-            # Plotly Charts
             fig_w = px.line(user_history, x="Date", y="Weight", title="Weight Trend (lbs)", markers=True)
             fig_w.update_yaxes(range=[user_history['Weight'].min() - 3, user_history['Weight'].max() + 3])
             st.plotly_chart(fig_w, use_container_width=True)
@@ -186,7 +177,37 @@ with tab2:
             display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
             display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No logs found. Use the 'Log Entry' tab to start!")
     except Exception as e:
         st.error(f"Error loading history: {e}")
+
+with tab3:
+    st.title("🔮 The Path Ahead")
+    if weight > 0 and lbm > 0:
+        daily_deficit = tdee - target_cals
+        weekly_deficit = daily_deficit * 7
+        projected_loss_weekly = weekly_deficit / 3500
+        
+        st.metric("Estimated Weekly Loss", f"{projected_loss_weekly:.2f} lbs")
+        
+        if projected_loss_weekly > 0:
+            st.write(f"Based on your **{strategy}**, here is your projected timeline:")
+            timeframes = [2, 4, 8, 12, 16]
+            projection_data = []
+            for wk in timeframes:
+                est_weight = weight - (projected_loss_weekly * wk)
+                est_date = (datetime.now() + pd.Timedelta(weeks=wk)).strftime("%b %d, %Y")
+                if est_weight >= (goal_weight - 5): # Show slightly past goal
+                    projection_data.append({
+                        "Weeks Out": f"{wk} Weeks",
+                        "Target Date": est_date,
+                        "Est. Weight (lbs)": f"{est_weight:.1f}"
+                    })
+            st.table(projection_data)
+            
+            weeks_to_goal = (weight - goal_weight) / projected_loss_weekly
+            goal_date = (datetime.now() + pd.Timedelta(weeks=weeks_to_goal)).strftime("%B %Y")
+            st.success(f"🎯 Projected to hit **{goal_weight} lbs** around **{goal_date}**!")
+        else:
+            st.warning("Switch to a 'Cut' phase in the sidebar to see weight loss projections.")
+    else:
+        st.info("Log your current metrics to see the projection!")
