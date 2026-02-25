@@ -31,10 +31,18 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 with st.sidebar:
     st.title("👤 Profile")
     user = st.selectbox("Who is tracking?", ["Rick", "Jenna"])
-    default_goal = 165.0 if user == "Rick" else 130.0
+    
+    # Updated Defaults: Rick 175, Jenna 140
+    default_goal = 175.0 if user == "Rick" else 140.0
     goal_weight = st.number_input("Goal Weight (lbs)", value=default_goal)
+    
+    # Default Activity Multiplier to 1.4
     activity_level = st.select_slider("Activity Multiplier", options=[1.2, 1.3, 1.4, 1.5, 1.6], value=1.4)
-    st.caption("1.4 = Working out 2-3 times/week")
+    
+    # New Visibility Toggle
+    show_goal_progress = st.toggle("Show Goal Progress", value=True)
+    
+    st.caption("Standard default is 1.4 (2-3 workouts/week)")
 
 # --- 4. MAIN INPUTS ---
 st.title(f"📊 {user}'s KatchMetrics")
@@ -112,23 +120,23 @@ try:
         user_history['Date'] = pd.to_datetime(user_history['Date']).dt.date
         user_history['Body Fat %'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
 
-        # --- MILESTONES ---
-        start_w = user_history['Weight'].iloc[0]
-        curr_w = user_history['Weight'].iloc[-1]
-        total_to_lose = start_w - goal_weight
-        
-        if total_to_lose > 0:
-            amount_lost = start_w - curr_w
-            progress_pct = min(max(amount_lost / total_to_lose, 0.0), 1.0)
+        # --- MILESTONES (Gated by Sidebar Toggle) ---
+        if show_goal_progress:
+            start_w = user_history['Weight'].iloc[0]
+            curr_w = user_history['Weight'].iloc[-1]
+            total_to_lose = start_w - goal_weight
             
-            st.subheader(f"🎯 Goal Progress: {progress_pct:.1%}")
-            st.progress(progress_pct)
-            
-            # Status Alerts
-            if progress_pct >= 1.0: st.success("🏆 100% COMPLETE - GOAL REACHED!")
-            elif progress_pct >= 0.75: st.info("🎖️ 75% Complete - You're in the home stretch!")
-            elif progress_pct >= 0.50: st.info("🥈 50% Complete - Halfway there!")
-            elif progress_pct >= 0.25: st.info("🥉 25% Complete - First milestone hit!")
+            if total_to_lose > 0:
+                amount_lost = start_w - curr_w
+                progress_pct = min(max(amount_lost / total_to_lose, 0.0), 1.0)
+                
+                st.subheader(f"🎯 Goal Progress: {progress_pct:.1%}")
+                st.progress(progress_pct)
+                
+                if progress_pct >= 1.0: st.success("🏆 100% COMPLETE - GOAL REACHED!")
+                elif progress_pct >= 0.75: st.info("🎖️ 75% Complete - You're in the home stretch!")
+                elif progress_pct >= 0.50: st.info("🥈 50% Complete - Halfway there!")
+                elif progress_pct >= 0.25: st.info("🥉 25% Complete - First milestone hit!")
 
         # --- CHARTS ---
         c1, c2 = st.columns(2)
@@ -141,7 +149,6 @@ try:
 
         # --- MOBILE FRIENDLY HISTORY ---
         st.subheader("📋 Recent History")
-        # Sort by date descending, hide index, and show only core columns
         display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
         st.dataframe(display_df, use_container_width=True, hide_index=True)
     else:
