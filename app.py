@@ -127,7 +127,7 @@ with tab1:
 
         if st.button(f"🚀 LOG DATA FOR {user.upper()}", use_container_width=True, type="primary"):
             new_entry = pd.DataFrame([{
-                "Date": datetime.now().strftime("%Y-%m-%d"),
+                "Date": datetime.now().strftime("%m/%d/%Y"), # SAVES AS MM/DD/YYYY
                 "User": user,
                 "Weight": weight,
                 "LBM": lbm,
@@ -152,9 +152,10 @@ with tab2:
             # --- Robust Numeric & Date Conversion ---
             user_history['Weight'] = pd.to_numeric(user_history['Weight'], errors='coerce')
             user_history['LBM'] = pd.to_numeric(user_history['LBM'], errors='coerce')
+            
+            # READS MM/DD/YYYY formats specifically
             user_history['Date'] = pd.to_datetime(user_history['Date'], errors='coerce')
             
-            # Cleanup
             user_history = user_history.dropna(subset=['Date', 'Weight', 'LBM'])
             user_history = user_history.sort_values(by="Date")
             
@@ -180,7 +181,9 @@ with tab2:
 
             st.subheader("📋 Recent History")
             display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
-            display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
+            
+            # DISPLAYS AS MM/DD/YYYY in the table
+            display_df['Date'] = display_df['Date'].dt.strftime('%m/%d/%Y')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
             # --- DANGER ZONE ---
@@ -214,7 +217,7 @@ with tab3:
             for wk in timeframes:
                 loss = projected_loss_weekly * wk
                 est_weight = max(weight - loss, goal_weight)
-                est_date = (datetime.now() + pd.Timedelta(weeks=wk)).strftime("%b %d, %Y")
+                est_date = (datetime.now() + pd.Timedelta(weeks=wk)).strftime("%m/%d/%Y")
                 projection_data.append({"Weeks Out": f"{wk} Weeks", "Target Date": est_date, "Est. Weight (lbs)": f"{est_weight:.1f}"})
                 if est_weight <= goal_weight: break
             st.table(projection_data)
@@ -222,7 +225,7 @@ with tab3:
             remaining_lbs = weight - goal_weight
             weeks_to_goal = remaining_lbs / projected_loss_weekly
             goal_date_obj = datetime.now() + pd.Timedelta(weeks=weeks_to_goal)
-            st.success(f"🎯 Projected to hit goal around **{goal_date_obj.strftime('%B %d, %Y')}**!")
+            st.success(f"🎯 Projected to hit goal around **{goal_date_obj.strftime('%m/%d/%Y')}**!")
         elif weight <= goal_weight:
             st.success(f"🏆 Goal reached! (Target: {goal_weight} lbs)")
         else:
