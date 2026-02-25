@@ -183,31 +183,49 @@ with tab2:
 with tab3:
     st.title("🔮 The Path Ahead")
     if weight > 0 and lbm > 0:
+        # Calculate Deficit
         daily_deficit = tdee - target_cals
         weekly_deficit = daily_deficit * 7
         projected_loss_weekly = weekly_deficit / 3500
         
         st.metric("Estimated Weekly Loss", f"{projected_loss_weekly:.2f} lbs")
         
-        if projected_loss_weekly > 0:
-            st.write(f"Based on your **{strategy}**, here is your projected timeline:")
+        # Only project if we are above the goal and in a deficit
+        if projected_loss_weekly > 0 and weight > goal_weight:
+            st.write(f"Based on your **{strategy}**, here is your projected timeline to hit **{goal_weight} lbs**:")
+            
             timeframes = [2, 4, 8, 12, 16]
             projection_data = []
+            
             for wk in timeframes:
-                est_weight = weight - (projected_loss_weekly * wk)
+                # Calculate loss, but don't go below goal_weight
+                loss = projected_loss_weekly * wk
+                est_weight = max(weight - loss, goal_weight)
                 est_date = (datetime.now() + pd.Timedelta(weeks=wk)).strftime("%b %d, %Y")
-                if est_weight >= (goal_weight - 5): # Show slightly past goal
-                    projection_data.append({
-                        "Weeks Out": f"{wk} Weeks",
-                        "Target Date": est_date,
-                        "Est. Weight (lbs)": f"{est_weight:.1f}"
-                    })
+                
+                projection_data.append({
+                    "Weeks Out": f"{wk} Weeks",
+                    "Target Date": est_date,
+                    "Est. Weight (lbs)": f"{est_weight:.1f}"
+                })
+                
+                # If we've hit the goal in this timeframe, stop adding more rows
+                if est_weight <= goal_weight:
+                    break
+
             st.table(projection_data)
             
-            weeks_to_goal = (weight - goal_weight) / projected_loss_weekly
-            goal_date = (datetime.now() + pd.Timedelta(weeks=weeks_to_goal)).strftime("%B %Y")
-            st.success(f"🎯 Projected to hit **{goal_weight} lbs** around **{goal_date}**!")
+            # Calculate total weeks remaining to hit exactly goal_weight
+            remaining_lbs = weight - goal_weight
+            weeks_to_goal = remaining_lbs / projected_loss_weekly
+            goal_date_obj = datetime.now() + pd.Timedelta(weeks=weeks_to_goal)
+            
+            st.success(f"🎯 Projected to hit your goal of **{goal_weight} lbs** around **{goal_date_obj.strftime('%B %d, %Y')}**!")
+            
+        elif weight <= goal_weight:
+            st.balloons()
+            st.success(f"🏆 You are already at or below your goal weight of {goal_weight} lbs! Switch to 'Maintenance' or 'Bulking' in the sidebar to adjust your targets.")
         else:
             st.warning("Switch to a 'Cut' phase in the sidebar to see weight loss projections.")
     else:
-        st.info("Log your current metrics to see the projection!")
+        st.info("Log your current metrics on the first tab to see the projection!")
