@@ -117,38 +117,33 @@ if weight > 0 and lbm > 0:
 
     st.info(f"**{strategy} Macros:** 🥩 P: {p_g:.0f}g | 🥑 F: {f_g:.0f}g | 🍞 C: {c_g:.0f}g")
 
-# --- 6. SAVE ENTRY (MOBILE OPTIMIZED) ---
+# --- 6. SAVE ENTRY ---
 st.divider()
 
-# Creating a "Center" column specifically for the button 
-# so it doesn't get lost on small screens
-btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
-
-with btn_col2:
-    if st.button(f"🚀 LOG DATA FOR {user.upper()}", use_container_width=True):
-        if weight > 0 and lbm > 0:
-            new_entry = pd.DataFrame([{
-                "Date": datetime.now().strftime("%Y-%m-%d"),
-                "User": user,
-                "Weight": weight,
-                "LBM": lbm,
-                "Goal_Weight": goal_weight,
-                "Activity_Level": activity_level
-            }])
+# Removing the 3-column split to prevent mobile stacking
+if st.button(f"🚀 LOG DATA FOR {user.upper()}", use_container_width=True, type="primary"):
+    if weight > 0 and lbm > 0:
+        new_entry = pd.DataFrame([{
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "User": user,
+            "Weight": weight,
+            "LBM": lbm,
+            "Goal_Weight": goal_weight,
+            "Activity_Level": activity_level
+        }])
+        
+        try:
+            existing_data = conn.read(worksheet="Logs", ttl=0)
+            updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
+        except Exception:
+            updated_df = new_entry
             
-            try:
-                existing_data = conn.read(worksheet="Logs", ttl=0)
-                updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
-            except Exception:
-                updated_df = new_entry
-                
-            conn.update(worksheet="Logs", data=updated_df)
-            st.balloons()
-            st.success("Entry saved!")
-            # Optional: Rerun to refresh the charts immediately
-            st.rerun()
-        else:
-            st.error("Enter values before saving.")
+        conn.update(worksheet="Logs", data=updated_df)
+        st.balloons()
+        st.success("Entry saved!")
+        st.rerun()
+    else:
+        st.error("Enter values before saving.")
 
 # --- 7. HISTORY & CHARTS ---
 st.divider()
