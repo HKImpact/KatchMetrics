@@ -126,8 +126,11 @@ with tab1:
         st.info(f"🥩 **P:** {p_g:.0f}g | 🥑 **F:** {f_g:.0f}g | 🍞 **C:** {c_g:.0f}g")
 
         if st.button(f"🚀 LOG DATA FOR {user.upper()}", use_container_width=True, type="primary"):
+            # Saves as a string. Plain Text setting in Sheets will respect this.
+            date_str = datetime.now().strftime("%m/%d/%Y") 
+            
             new_entry = pd.DataFrame([{
-                "Date": datetime.now().strftime("%m/%d/%Y"), # SAVES AS MM/DD/YYYY
+                "Date": date_str,
                 "User": user,
                 "Weight": weight,
                 "LBM": lbm,
@@ -141,7 +144,7 @@ with tab1:
                 updated_df = new_entry
             conn.update(worksheet="Logs", data=updated_df)
             st.balloons()
-            st.success("Entry saved!")
+            st.success(f"Entry saved for {date_str}!")
             st.rerun()
 
 with tab2:
@@ -149,17 +152,16 @@ with tab2:
         history = conn.read(worksheet="Logs", ttl=0)
         user_history = history[history['User'] == user].copy()
         if not user_history.empty:
-            # --- Robust Numeric & Date Conversion ---
             user_history['Weight'] = pd.to_numeric(user_history['Weight'], errors='coerce')
             user_history['LBM'] = pd.to_numeric(user_history['LBM'], errors='coerce')
             
-            # READS MM/DD/YYYY formats specifically
+            # Robust conversion: Handles YYYY-MM-DD and MM/DD/YYYY
             user_history['Date'] = pd.to_datetime(user_history['Date'], errors='coerce')
             
             user_history = user_history.dropna(subset=['Date', 'Weight', 'LBM'])
             user_history = user_history.sort_values(by="Date")
             
-            user_history['Body Fat %'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
+            user_history['Body BF%'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
 
             if show_goal_progress:
                 start_w = user_history['Weight'].iloc[0]
@@ -175,18 +177,15 @@ with tab2:
             fig_w.update_yaxes(range=[user_history['Weight'].min() - 3, user_history['Weight'].max() + 3])
             st.plotly_chart(fig_w, use_container_width=True)
 
-            fig_bf = px.line(user_history, x="Date", y="Body Fat %", title="Body Fat Trend (%)", markers=True)
-            fig_bf.update_yaxes(range=[user_history['Body Fat %'].min() - 1, user_history['Body Fat %'].max() + 1])
+            fig_bf = px.line(user_history, x="Date", y="Body BF%", title="Body Fat Trend (%)", markers=True)
+            fig_bf.update_yaxes(range=[user_history['Body BF%'].min() - 1, user_history['Body BF%'].max() + 1])
             st.plotly_chart(fig_bf, use_container_width=True)
 
             st.subheader("📋 Recent History")
             display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
-            
-            # DISPLAYS AS MM/DD/YYYY in the table
             display_df['Date'] = display_df['Date'].dt.strftime('%m/%d/%Y')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-            # --- DANGER ZONE ---
             st.divider()
             with st.expander("⚠️ Danger Zone: Delete Last Entry"):
                 st.warning(f"This will remove your log from {display_df['Date'].iloc[0]}.")
@@ -197,7 +196,7 @@ with tab2:
                         last_idx = user_rows.index[-1]
                         updated_df = full_df.drop(last_idx)
                         conn.update(worksheet="Logs", data=updated_df)
-                        st.success("Deleted! Refreshing...")
+                        st.success("Deleted!")
                         st.rerun()
     except Exception as e:
         st.error(f"Error loading history: {e}")
