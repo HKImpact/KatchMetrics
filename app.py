@@ -44,14 +44,30 @@ with st.sidebar:
     
     st.caption("Standard default is 1.4 (2-3 workouts/week)")
 
-# --- 4. MAIN INPUTS ---
+# --- 4. MAIN INPUTS (WITH AUTO-PREFILL) ---
 st.title(f"📊 {user}'s KatchMetrics")
+
+# 4a. Fetch last entries for this user to use as defaults
+try:
+    # We pull the history again here to get the defaults
+    history_for_defaults = conn.read(worksheet="Logs", ttl=0)
+    last_user_entry = history_for_defaults[history_for_defaults['User'] == user].iloc[-1]
+    
+    default_weight = float(last_user_entry['Weight'])
+    default_lbm = float(last_user_entry['LBM'])
+except:
+    # Fallback if it's a brand new user with no history
+    default_weight = 180.0 if user == "Rick" else 150.0
+    default_lbm = 140.0 if user == "Rick" else 110.0
+
 col1, col2 = st.columns(2)
 
 with col1:
-    weight = st.number_input("Current Weight (lbs)", min_value=0.0, step=0.1, format="%.2f")
+    # Now weight defaults to your last entry!
+    weight = st.number_input("Current Weight (lbs)", value=default_weight, step=0.1, format="%.2f")
 with col2:
-    lbm = st.number_input("Lean Body Mass (lbs)", min_value=0.0, step=0.1, format="%.2f")
+    # LBM defaults to last entry (saves so much time)
+    lbm = st.number_input("Lean Body Mass (lbs)", value=default_lbm, step=0.1, format="%.2f")
 
 # Calculations
 if weight > 0 and lbm > 0:
