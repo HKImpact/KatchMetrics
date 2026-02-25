@@ -66,6 +66,38 @@ if weight > 0 and lbm > 0:
     # Macro Card
     st.info(f"**{strategy} Macros:** 🥩 Protein: {p_g:.0f}g | 🥑 Fat: {f_g:.0f}g | 🍞 Carbs: {c_g:.0f}g")
 
-# 6. Save Button (Next Step: Linking to your GSheet)
+# 6. Save Button Logic
 if st.button(f"Log Data for {user}"):
-    st.write("Ready to push to Google Sheets!")
+    if weight > 0 and lbm > 0:
+        # Create a new row of data matching your Sheet headers
+        new_entry = pd.DataFrame([{
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "User": user,
+            "Weight": weight,
+            "LBM": lbm,
+            "Goal_Weight": goal_weight,
+            "Activity_Level": activity_level
+        }])
+        
+        # Read existing data from the "Logs" worksheet
+        existing_data = conn.read(worksheet="Logs", usecols=[0,1,2,3,4,5], ttl=0)
+        
+        # Combine old and new data
+        updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
+        
+        # Update the Google Sheet
+        conn.update(worksheet="Logs", data=updated_df)
+        
+        st.balloons()
+        st.success(f"Entry for {user} saved successfully!")
+    else:
+        st.error("Please enter both Weight and LBM before saving.")
+
+# 7. View History Section
+st.divider()
+st.subheader("📋 Recent History")
+# Pull the latest data to show a table below
+history = conn.read(worksheet="Logs", ttl=0)
+# Filter history to show only the current user's data
+user_history = history[history['User'] == user]
+st.dataframe(user_history.tail(10), use_container_width=True)
