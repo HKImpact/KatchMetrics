@@ -149,9 +149,15 @@ with tab2:
         history = conn.read(worksheet="Logs", ttl=0)
         user_history = history[history['User'] == user].copy()
         if not user_history.empty:
-            user_history['Weight'] = pd.to_numeric(user_history['Weight'])
-            user_history['LBM'] = pd.to_numeric(user_history['LBM'])
-            user_history['Date'] = pd.to_datetime(user_history['Date'])
+            # --- Robust Numeric & Date Conversion ---
+            user_history['Weight'] = pd.to_numeric(user_history['Weight'], errors='coerce')
+            user_history['LBM'] = pd.to_numeric(user_history['LBM'], errors='coerce')
+            user_history['Date'] = pd.to_datetime(user_history['Date'], errors='coerce')
+            
+            # Cleanup
+            user_history = user_history.dropna(subset=['Date', 'Weight', 'LBM'])
+            user_history = user_history.sort_values(by="Date")
+            
             user_history['Body Fat %'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
 
             if show_goal_progress:
@@ -177,7 +183,7 @@ with tab2:
             display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-            # --- DANGER ZONE: DELETE LAST ENTRY ---
+            # --- DANGER ZONE ---
             st.divider()
             with st.expander("⚠️ Danger Zone: Delete Last Entry"):
                 st.warning(f"This will remove your log from {display_df['Date'].iloc[0]}.")
