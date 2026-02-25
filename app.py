@@ -27,46 +27,68 @@ check_password()
 # --- 2. CONNECTION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 3. SIDEBAR ---
-with st.sidebar:
-    st.title("👤 Profile")
-    user = st.selectbox("Who is tracking?", ["Rick", "Jenna"])
+# --- 3. DYNAMIC USER & PREFERENCE FETCH ---
+try:
+    # Pull settings from UserProps tab
+    props_df = conn.read(worksheet="UserProps", ttl=0)
+    user_list = props_df['User'].unique().tolist()
     
-    # Updated Defaults: Rick 175, Jenna 140
-    default_goal = 175.0 if user == "Rick" else 140.0
-    goal_weight = st.number_input("Goal Weight (lbs)", value=default_goal)
+    with st.sidebar:
+        st.title("👤 Profile")
+        user = st.selectbox("Who is tracking?", options=user_list)
     
-    # Default Activity Multiplier to 1.4
-    activity_level = st.select_slider("Activity Multiplier", options=[1.2, 1.3, 1.4, 1.5, 1.6], value=1.4)
-    
-    # New Visibility Toggle
-    show_goal_progress = st.toggle("Show Goal Progress", value=True)
-    
-    st.caption("Standard default is 1.4 (2-3 workouts/week)")
+    # Extract preferences for the selected user
+    user_prefs = props_df[props_df['User'] == user].iloc[0]
+    saved_goal = float(user_prefs['Goal_Weight'])
+    saved_activity = float(user_prefs['Activity_Multiplier'])
+    saved_show_goal = bool(user_prefs['Show_Goal'])
+except Exception:
+    # Fallback if UserProps is missing or user not found
+    with st.sidebar:
+        st.title("👤 Profile")
+        user = st.selectbox("Who is tracking?", ["Rick", "Jenna"])
+    saved_goal = 175.0 if user == "Rick" else 140.0
+    saved_activity = 1.4
+    saved_show_goal = True
 
-# --- 4. MAIN INPUTS (WITH AUTO-PREFILL) ---
+# --- 4. SIDEBAR SETTINGS ---
+with st.sidebar:
+    goal_weight = st.number_input("Goal Weight (lbs)", value=saved_goal)
+    activity_level = st.select_slider("Activity Multiplier", 
+                                      options=[1.2, 1.3, 1.4, 1.5, 1.6], 
+                                      value=saved_activity)
+    show_goal_progress = st.toggle("Show Goal Progress", value=saved_show_goal)
+
+    if st.button("💾 Save as My Defaults"):
+        try:
+            current_props = conn.read(worksheet="UserProps", ttl=0)
+            # Find the correct row to update
+            idx = current_props.index[current_props['User'] == user].tolist()[0]
+            current_props.at[idx, 'Goal_Weight'] = goal_weight
+            current_props.at[idx, 'Activity_Multiplier'] = activity_level
+            current_props.at[idx, 'Show_Goal'] = show_goal_progress
+            
+            conn.update(worksheet="UserProps", data=current_props)
+            st.success("Cloud settings updated!")
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+
+# --- 5. MAIN INPUTS (AUTO-PREFILL FROM LOGS) ---
 st.title(f"📊 {user}'s KatchMetrics")
 
-# 4a. Fetch last entries for this user to use as defaults
 try:
-    # We pull the history again here to get the defaults
-    history_for_defaults = conn.read(worksheet="Logs", ttl=0)
-    last_user_entry = history_for_defaults[history_for_defaults['User'] == user].iloc[-1]
-    
+    history_df = conn.read(worksheet="Logs", ttl=0)
+    last_user_entry = history_df[history_df['User'] == user].iloc[-1]
     default_weight = float(last_user_entry['Weight'])
     default_lbm = float(last_user_entry['LBM'])
-except:
-    # Fallback if it's a brand new user with no history
+except Exception:
     default_weight = 180.0 if user == "Rick" else 150.0
     default_lbm = 140.0 if user == "Rick" else 110.0
 
 col1, col2 = st.columns(2)
-
 with col1:
-    # Now weight defaults to your last entry!
     weight = st.number_input("Current Weight (lbs)", value=default_weight, step=0.1, format="%.2f")
 with col2:
-    # LBM defaults to last entry (saves so much time)
     lbm = st.number_input("Lean Body Mass (lbs)", value=default_lbm, step=0.1, format="%.2f")
 
 # Calculations
@@ -87,6 +109,7 @@ if weight > 0 and lbm > 0:
     mult_map = {"25% Cut": 0.75, "20% Cut": 0.80, "10% Cut": 0.90, "Maintenance": 1.0, "Bulking (10%)": 1.10}
     target_cals = tdee * mult_map[strategy]
     
+    # Macros: Protein = Goal Weight, Fat = 25% of calories
     p_g = goal_weight
     f_g = (target_cals * 0.25) / 9
     c_g = (target_cals - (p_g * 4) - (f_g * 9)) / 4
@@ -99,7 +122,7 @@ if weight > 0 and lbm > 0:
 
     st.info(f"**{strategy} Macros:** 🥩 P: {p_g:.0f}g | 🥑 F: {f_g:.0f}g | 🍞 C: {c_g:.0f}g")
 
-# --- 5. SAVE DATA ---
+# --- 6. SAVE ENTRY ---
 if st.button(f"🚀 Log Data for {user}"):
     if weight > 0 and lbm > 0:
         new_entry = pd.DataFrame([{
@@ -114,47 +137,41 @@ if st.button(f"🚀 Log Data for {user}"):
         try:
             existing_data = conn.read(worksheet="Logs", ttl=0)
             updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
-        except:
+        except Exception:
             updated_df = new_entry
             
         conn.update(worksheet="Logs", data=updated_df)
         st.balloons()
-        st.success("Entry saved to Google Sheets!")
+        st.success("Entry saved!")
     else:
-        st.error("Please enter Weight and LBM first.")
+        st.error("Enter values before saving.")
 
-# --- 6. HISTORY & CHARTS ---
+# --- 7. HISTORY & CHARTS ---
 st.divider()
 try:
     history = conn.read(worksheet="Logs", ttl=0)
     user_history = history[history['User'] == user].copy()
     
     if not user_history.empty:
-        # Data Preparation
         user_history['Weight'] = pd.to_numeric(user_history['Weight'])
         user_history['LBM'] = pd.to_numeric(user_history['LBM'])
         user_history['Date'] = pd.to_datetime(user_history['Date']).dt.date
         user_history['Body Fat %'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
 
-        # --- MILESTONES (Gated by Sidebar Toggle) ---
+        # Progress Milestone Section
         if show_goal_progress:
             start_w = user_history['Weight'].iloc[0]
             curr_w = user_history['Weight'].iloc[-1]
-            total_to_lose = start_w - goal_weight
+            total_dist = start_w - goal_weight
             
-            if total_to_lose > 0:
-                amount_lost = start_w - curr_w
-                progress_pct = min(max(amount_lost / total_to_lose, 0.0), 1.0)
-                
+            if total_dist > 0:
+                dist_covered = start_w - curr_w
+                progress_pct = min(max(dist_covered / total_dist, 0.0), 1.0)
                 st.subheader(f"🎯 Goal Progress: {progress_pct:.1%}")
                 st.progress(progress_pct)
-                
-                if progress_pct >= 1.0: st.success("🏆 100% COMPLETE - GOAL REACHED!")
-                elif progress_pct >= 0.75: st.info("🎖️ 75% Complete - You're in the home stretch!")
-                elif progress_pct >= 0.50: st.info("🥈 50% Complete - Halfway there!")
-                elif progress_pct >= 0.25: st.info("🥉 25% Complete - First milestone hit!")
+                if progress_pct >= 1.0: st.success("🏆 GOAL REACHED!")
 
-        # --- CHARTS ---
+        # Charts and History Table
         c1, c2 = st.columns(2)
         with c1:
             st.caption("Weight Trend (lbs)")
@@ -163,11 +180,8 @@ try:
             st.caption("Body Fat % Trend")
             st.line_chart(user_history, x="Date", y="Body Fat %")
 
-        # --- MOBILE FRIENDLY HISTORY ---
         st.subheader("📋 Recent History")
         display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
         st.dataframe(display_df, use_container_width=True, hide_index=True)
-    else:
-        st.write("No history found for this user yet.")
-except Exception as e:
-    st.write("Start logging to see your history and charts!")
+except Exception:
+    st.write("Start logging to see your charts!")
