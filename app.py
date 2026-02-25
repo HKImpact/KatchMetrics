@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
+import plotly.express as px
 
 # Setup
 st.set_page_config(page_title="KatchMetrics", page_icon="⚖️", layout="wide")
@@ -29,7 +30,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. DYNAMIC USER & PREFERENCE FETCH ---
 try:
-    # Pull settings from UserProps tab
     props_df = conn.read(worksheet="UserProps", ttl=0)
     user_list = props_df['User'].unique().tolist()
     
@@ -37,13 +37,11 @@ try:
         st.title("👤 Profile")
         user = st.selectbox("Who is tracking?", options=user_list)
     
-    # Extract preferences for the selected user
     user_prefs = props_df[props_df['User'] == user].iloc[0]
     saved_goal = float(user_prefs['Goal_Weight'])
     saved_activity = float(user_prefs['Activity_Multiplier'])
     saved_show_goal = bool(user_prefs['Show_Goal'])
 except Exception:
-    # Fallback if UserProps is missing or user not found
     with st.sidebar:
         st.title("👤 Profile")
         user = st.selectbox("Who is tracking?", ["Rick", "Jenna"])
@@ -62,12 +60,10 @@ with st.sidebar:
     if st.button("💾 Save as My Defaults"):
         try:
             current_props = conn.read(worksheet="UserProps", ttl=0)
-            # Find the correct row to update
             idx = current_props.index[current_props['User'] == user].tolist()[0]
             current_props.at[idx, 'Goal_Weight'] = goal_weight
             current_props.at[idx, 'Activity_Multiplier'] = activity_level
             current_props.at[idx, 'Show_Goal'] = show_goal_progress
-            
             conn.update(worksheet="UserProps", data=current_props)
             st.success("Cloud settings updated!")
         except Exception as e:
@@ -109,7 +105,6 @@ if weight > 0 and lbm > 0:
     mult_map = {"25% Cut": 0.75, "20% Cut": 0.80, "10% Cut": 0.90, "Maintenance": 1.0, "Bulking (10%)": 1.10}
     target_cals = tdee * mult_map[strategy]
     
-    # Macros: Protein = Goal Weight, Fat = 25% of calories
     p_g = goal_weight
     f_g = (target_cals * 0.25) / 9
     c_g = (target_cals - (p_g * 4) - (f_g * 9)) / 4
@@ -155,10 +150,9 @@ try:
     if not user_history.empty:
         user_history['Weight'] = pd.to_numeric(user_history['Weight'])
         user_history['LBM'] = pd.to_numeric(user_history['LBM'])
-        user_history['Date'] = pd.to_datetime(user_history['Date']).dt.date
+        user_history['Date'] = pd.to_datetime(user_history['Date'])
         user_history['Body Fat %'] = ((user_history['Weight'] - user_history['LBM']) / user_history['Weight']) * 100
 
-        # Progress Milestone Section
         if show_goal_progress:
             start_w = user_history['Weight'].iloc[0]
             curr_w = user_history['Weight'].iloc[-1]
@@ -169,19 +163,21 @@ try:
                 progress_pct = min(max(dist_covered / total_dist, 0.0), 1.0)
                 st.subheader(f"🎯 Goal Progress: {progress_pct:.1%}")
                 st.progress(progress_pct)
-                if progress_pct >= 1.0: st.success("🏆 GOAL REACHED!")
 
-        # Charts and History Table
+        # Plotly Charts
         c1, c2 = st.columns(2)
         with c1:
-            st.caption("Weight Trend (lbs)")
-            st.line_chart(user_history, x="Date", y="Weight")
+            fig_w = px.line(user_history, x="Date", y="Weight", title="Weight Trend (lbs)", markers=True)
+            fig_w.update_yaxes(range=[user_history['Weight'].min() - 3, user_history['Weight'].max() + 3])
+            st.plotly_chart(fig_w, use_container_width=True)
         with c2:
-            st.caption("Body Fat % Trend")
-            st.line_chart(user_history, x="Date", y="Body Fat %")
+            fig_bf = px.line(user_history, x="Date", y="Body Fat %", title="Body Fat Trend (%)", markers=True)
+            fig_bf.update_yaxes(range=[user_history['Body Fat %'].min() - 1, user_history['Body Fat %'].max() + 1])
+            st.plotly_chart(fig_bf, use_container_width=True)
 
         st.subheader("📋 Recent History")
         display_df = user_history[['Date', 'Weight', 'LBM']].sort_values(by="Date", ascending=False)
+        display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 except Exception:
     st.write("Start logging to see your charts!")
