@@ -81,7 +81,7 @@ if weight > 0 and lbm > 0:
     strategy = st.select_slider(
         "Current Phase", 
         options=["25% Cut", "20% Cut", "10% Cut", "Maintenance", "Bulking (10%)"],
-        value="20% Cut"
+        value="10% Cut"
     )
     
     mult_map = {"25% Cut": 0.75, "20% Cut": 0.80, "10% Cut": 0.90, "Maintenance": 1.0, "Bulking (10%)": 1.10}
